@@ -1,0 +1,167 @@
+#include "gif_exporter.h"
+#include <gdal_priv.h>
+#include <QProcess>
+#include <QDir>
+#include <QImage>
+#include <QTemporaryDir>
+#include <QDebug>
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+class GifExporter::Impl {
+public:
+    std::string lastError;
+
+    bool exportToGif(const std::string& multiBandTiffPath,
+                     const GeoTIFFLoader::ColorMap& colorMap,
+                     const std::string& outputGifPath,
+                     int frameDelay)
+    {
+        GDALAllRegister();
+
+        GDALDataset* dataset = (GDALDataset*)GDALOpen(multiBandTiffPath.c_str(), GA_ReadOnly);
+        if (!dataset) {
+            lastError = "无法打开 TIFF 文件: " + multiBandTiffPath;
+            return false;
+        }
+
+        int width = dataset->GetRasterXSize();
+        int height = dataset->GetRasterYSize();
+        int numBands = dataset->GetRasterCount();
+
+        if (numBands < 2) {
+            lastError = "需要至少 2 个波段，实际只有 " + std::to_string(numBands);
+            GDALClose(dataset);
+            return false;
+        }
+
+        QTemporaryDir tmpDir;
+        if (!tmpDir.isValid()) {
+            lastError = "无法创建临时目录";
+            GDALClose(dataset);
+            return false;
+        }
+        QString frameDir = tmpDir.path() + "/";
+
+        QStringList frameFiles;
+
+        for (int bandIdx = 0; bandIdx < numBands; ++bandIdx) {
+            GDALRasterBand* band = dataset->GetRasterBand(bandIdx + 1);
+            if (!band) {
+                lastError = "无法获取波段 " + std::to_string(bandIdx + 1);
+                continue;
+            }
+
+            std::vector<double> data(width * height);
+            if (band->RasterIO(GF_Read, 0, 0, width, height,
+                               data.data(), width, height, GDT_Float64, 0, 0) != CE_None) {
+                lastError = "读取波段 " + std::to_string(bandIdx + 1) + " 失败";
+                continue;
+            }
+
+            double nodata = band->GetNoDataValue();
+            bool hasNodata = !std::isnan(nodata);
+
+            double minVal = data[0];
+            double maxVal = data[0];
+            for (double v : data) {
+                if (std::isnan(v) || std::isinf(v)) continue;
+                if (hasNodata && v == nodata) continue;
+                if (v < minVal) minVal = v;
+                if (v > maxVal) maxVal = v;
+            }
+
+            QImage frame(width, height, QImage::Format_RGB32);
+            frame.fill(Qt::white);
+
+            double range = maxVal - minVal;
+            int colorCount = colorMap.colors.size();
+
+            for (int i = 0; i < width * height; ++i) {
+                double val = data[i];
+                if (std::isnan(val) || std::isinf(val)) continue;
+                if (hasNodata && val == nodata) continue;
+
+                double t = range > 0 ? (val - minVal) / range : 0.5;
+                t = std::max(0.0, std::min(1.0, t));
+                int colorIdx = static_cast<int>(t * (colorCount - 1));
+                auto [r, g, b, a] = colorMap.colors[colorIdx];
+
+                frame.setPixelColor(i % width, i / width,
+                    QColor::fromRgbF(r, g, b, 1.0));
+            }
+
+            QString pngPath = frameDir + QString("frame_%1.png").arg(bandIdx, 3, 10, QChar('0'));
+            if (frame.save(pngPath, "PNG")) {
+                frameFiles << pngPath;
+            } else {
+                lastError = "保存 PNG 帧 " + std::to_string(bandIdx + 1) + " 失败";
+            }
+        }
+
+        GDALClose(dataset);
+
+        if (frameFiles.isEmpty()) {
+            if (lastError.empty()) lastError = "没有生成任何有效帧";
+            return false;
+        }
+
+        QProcess process;
+        QStringList args;
+        args << "-delay" << QString::number(frameDelay / 10)
+             << "-loop" << "0";
+        for (const QString& f : frameFiles) {
+            args << f;
+        }
+        args << QString::fromStdString(outputGifPath);
+
+        // ImageMagick 7: 用 magick 替代 convert
+        QString program = "magick";
+        QProcess which;
+        which.setProgram("which");
+        which.setArguments({"magick"});
+        which.start();
+        which.waitForFinished();
+        if (which.exitCode() != 0) {
+            program = "convert";
+        }
+
+        process.setProgram(program);
+        process.setArguments(args);
+        process.start();
+        process.waitForFinished();
+
+        for (const QString& f : frameFiles) {
+            QFile::remove(f);
+        }
+
+        if (process.exitCode() != 0) {
+            lastError = "ImageMagick (" + program.toStdString() + ") 失败:\n";
+            lastError += process.readAllStandardError().toStdString();
+            return false;
+        }
+
+        if (!QFile::exists(QString::fromStdString(outputGifPath))) {
+            lastError = "GIF 文件未生成: " + outputGifPath;
+            return false;
+        }
+
+        return true;
+    }
+};
+
+GifExporter::GifExporter() : pImpl(std::make_unique<Impl>()) {}
+GifExporter::~GifExporter() = default;
+
+bool GifExporter::exportToGif(const std::string& multiBandTiffPath,
+                               const GeoTIFFLoader::ColorMap& colorMap,
+                               const std::string& outputGifPath,
+                               int frameDelay)
+{
+    return pImpl->exportToGif(multiBandTiffPath, colorMap, outputGifPath, frameDelay);
+}
+
+std::string GifExporter::getLastError() const {
+    return pImpl->lastError;
+}

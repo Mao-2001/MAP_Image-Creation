@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAP v1.3 - 地理信息系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { width: 100%; height: 100vh; }
+
+        #contextMenu {
+            display: none;
+            position: absolute;
+            z-index: 10000;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+            min-width: 120px;
+            font: 14px/1.5 Arial, sans-serif;
+        }
+        #contextMenu div {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: #333;
+        }
+        #contextMenu div:hover {
+            background: #f0f0f0;
+        }
+
+        .info {
+            padding: 6px 8px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            background: white;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        .legend {
+            line-height: 18px;
+            color: #555;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="contextMenu"><div onclick="app.reloadMap()">重新加载</div></div>
+    <script>
+        // 天地图密钥（由Qt程序替换）
+        var tiandituKey = "{{TIANDITU_KEY}}";
+
+        // QWebChannel 通信桥
+        var app = null;
+        new QWebChannel(qt.webChannelTransport, function(channel) {
+            app = channel.objects.app;
+        });
+
+        // 存储图层
+        var tiffLayers = [];
+        var shapefileLayers = [];
+
+        // 初始化地图，中心设为西安，缩放级别4
+        var map = L.map('map', {
+            center: [34.34, 108.94],
+            zoom: 4,
+            zoomControl: true
+        });
+
+        // 天地图矢量底图（球面墨卡托投影）
+        var vecLayer = L.tileLayer('http://t0.tianditu.gov.cn/vec_w/wmts?' +
+            'SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&' +
+            'TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' + tiandituKey, {
+            maxZoom: 18,
+            minZoom: 1,
+            tileSize: 256
+        });
+
+        // 天地图矢量注记层（球面墨卡托投影）
+        var cvaLayer = L.tileLayer('http://t0.tianditu.gov.cn/cva_w/wmts?' +
+            'SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&' +
+            'TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' + tiandituKey, {
+            maxZoom: 18,
+            minZoom: 1,
+            tileSize: 256
+        });
+
+        // 添加图层到地图
+        map.addLayer(vecLayer);
+        map.addLayer(cvaLayer);
+
+        // 自定义右键菜单
+        var menu = document.getElementById('contextMenu');
+        document.getElementById('map').addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            menu.style.display = 'block';
+            menu.style.left = e.offsetX + 'px';
+            menu.style.top = e.offsetY + 'px';
+        });
+        document.addEventListener('click', function() {
+            menu.style.display = 'none';
+        });
+
+        // 添加 TIFF 图像叠加层
+        function addTiffImage(base64Image, bounds) {
+            console.log('addTiffImage called');
+            console.log('bounds:', bounds);
+            console.log('base64 length:', base64Image ? base64Image.length : 0);
+
+            if (!base64Image || !bounds) {
+                console.error('Missing image or bounds');
+                return;
+            }
+
+            var imageBounds;
+            if (Array.isArray(bounds[0])) {
+                imageBounds = bounds;
+            } else {
+                imageBounds = [[bounds[0], bounds[1]], [bounds[2], bounds[3]]];
+            }
+
+            console.log('imageBounds:', imageBounds);
+
+            try {
+                var overlay = L.imageOverlay(base64Image, imageBounds, {
+                    opacity: 0.8,
+                    interactive: true
+                });
+
+                overlay.addTo(map);
+                tiffLayers.push(overlay);
+
+                map.fitBounds(imageBounds);
+                console.log('TIFF 图层已添加成功');
+            } catch(e) {
+                console.error('添加 TIFF 图层失败:', e);
+            }
+        }
+
+        // 添加 Shapefile 图层（GeoJSON）
+        function addShapefileLayer(geojson) {
+            try {
+                // 处理字符串或对象
+                var data = (typeof geojson === 'string') ? JSON.parse(geojson) : geojson;
+
+                var layer = L.geoJSON(data, {
+                    style: function(feature) {
+                        return {
+                            color: feature.properties.color || '#3388ff',
+                            weight: 2,
+                            opacity: feature.properties.opacity || 0.6,
+                            fillOpacity: 0.2
+                        };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        if (feature.properties && feature.properties.name) {
+                            layer.bindPopup(feature.properties.name);
+                        }
+                    }
+                });
+
+                layer.addTo(map);
+                shapefileLayers.push(layer);
+
+                // 调整视图到图层范围
+                if (shapefileLayers.length === 1) {
+                    map.fitBounds(layer.getBounds());
+                }
+
+                console.log('SHP 图层已添加', data);
+            } catch(e) {
+                console.error('添加 SHP 图层失败:', e);
+            }
+        }
+
+        // 动画播放状态
+        var animState = { overlay: null, timer: null, current: 0, frames: [] };
+
+        // 播放动画
+        function playAnimation(frames, bounds, fps) {
+            stopAnimation();
+
+            animState.frames = frames;
+            animState.current = 0;
+            animState.overlay = L.imageOverlay(frames[0], bounds, {
+                opacity: 0.8,
+                interactive: true
+            }).addTo(map);
+            map.fitBounds(bounds);
+
+            animState.timer = setInterval(function() {
+                animState.current = (animState.current + 1) % animState.frames.length;
+                animState.overlay.setUrl(animState.frames[animState.current]);
+            }, 1000 / fps);
+        }
+
+        // 停止动画
+        function stopAnimation() {
+            if (animState.timer) {
+                clearInterval(animState.timer);
+                animState.timer = null;
+            }
+            if (animState.overlay) {
+                map.removeLayer(animState.overlay);
+                animState.overlay = null;
+            }
+            animState.frames = [];
+            animState.current = 0;
+        }
+
+        // 清除所有叠加图层
+        function clearOverlays() {
+            stopAnimation();
+            tiffLayers.forEach(function(layer) {
+                map.removeLayer(layer);
+            });
+            shapefileLayers.forEach(function(layer) {
+                map.removeLayer(layer);
+            });
+            tiffLayers = [];
+            shapefileLayers = [];
+        }
+    </script>
+</body>
+</html>

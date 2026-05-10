@@ -1,0 +1,8 @@
+build/
+测试数据/
+*.tif
+*.tiff
+*.shp
+*.shx
+*.dbf
+*.prj
