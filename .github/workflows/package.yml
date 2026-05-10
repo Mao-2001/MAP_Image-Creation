@@ -1,0 +1,70 @@
+name: Build Windows Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: qtwebengine
+
+      - name: Install GDAL via vcpkg
+        run: vcpkg install gdal[core,tools]:x64-windows
+
+      - name: Install ImageMagick
+        run: choco install imagemagick -y --no-progress
+
+      - name: Configure CMake
+        shell: cmd
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 ^
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path package -Force
+          Copy-Item build/Release/MAP_v1.3.exe package/
+          Copy-Item build/map.html package/
+          & windeployqt --release package/MAP_v1.3.exe
+          Copy-Item C:/vcpkg/installed/x64-windows/bin/gdal*.dll package/
+          Copy-Item C:/vcpkg/installed/x64-windows/tools/gdal/gdalwarp.exe package/
+          Copy-Item C:/vcpkg/installed/x64-windows/share/gdal package/gdal-data/ -Recurse
+          Copy-Item C:/vcpkg/installed/x64-windows/share/proj package/proj-data/ -Recurse -ErrorAction SilentlyContinue
+          $imDir = Get-ChildItem "C:/Program Files/ImageMagick-*" | Select-Object -First 1
+          if ($imDir) {
+            Copy-Item "$($imDir.FullName)/magick.exe" package/
+            if (Test-Path "$($imDir.FullName)/bin") {
+              Copy-Item "$($imDir.FullName)/bin/*.dll" package/
+            }
+            if (Test-Path "$($imDir.FullName)/modules") {
+              Copy-Item "$($imDir.FullName)/modules" package/modules/ -Recurse
+            }
+          }
+          Get-ChildItem package/ | Select-Object Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAP_v1.3_Windows
+          path: package/
