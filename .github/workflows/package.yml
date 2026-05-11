@@ -47,7 +47,7 @@ jobs:
           Copy-Item build/Release/MAP_v1.3.exe package/
           Copy-Item build/map.html package/
           & windeployqt --release package/MAP_v1.3.exe
-          Copy-Item C:/vcpkg/installed/x64-windows/bin/gdal*.dll package/
+          Copy-Item C:/vcpkg/installed/x64-windows/bin/*.dll package/
           Copy-Item C:/vcpkg/installed/x64-windows/tools/gdal/gdalwarp.exe package/
           Copy-Item C:/vcpkg/installed/x64-windows/share/gdal package/gdal-data/ -Recurse
           Copy-Item C:/vcpkg/installed/x64-windows/share/proj package/proj-data/ -Recurse -ErrorAction SilentlyContinue
