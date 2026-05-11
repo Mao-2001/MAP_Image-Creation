@@ -1,0 +1,80 @@
+name: Build Windows Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version tag'
+        required: true
+        default: '1.3.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup vcpkg (with caching)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+
+      - name: Install Qt 6.8
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          arch: 'win64_msvc2022_64'
+          modules: qtwebengine qtwebchannel
+
+      - name: Install ImageMagick (for GIF export)
+        run: choco install imagemagick --no-progress -y
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $pkg = "package"
+          New-Item -ItemType Directory -Force -Path $pkg
+
+          # Binary + assets
+          Copy-Item "build\Release\MAP_v1.3.exe" $pkg
+          Copy-Item "map.html" $pkg
+
+          # Qt DLLs + platform plugins (windeployqt)
+          windeployqt "$pkg\MAP_v1.3.exe"
+
+          # GDAL DLLs from vcpkg
+          $vcpkgBin = "$env:VCPKG_ROOT\installed\x64-windows\bin"
+          Get-ChildItem $vcpkgBin -Filter "*.dll" | Copy-Item -Destination $pkg
+
+          # GDAL data files (for coordinate system support)
+          $vcpkgShare = "$env:VCPKG_ROOT\installed\x64-windows\share"
+          if (Test-Path "$vcpkgShare\gdal") {
+            Copy-Item -Recurse "$vcpkgShare\gdal" "$pkg\gdal_data"
+          }
+          if (Test-Path "$vcpkgShare\proj") {
+            Copy-Item -Recurse "$vcpkgShare\proj" "$pkg\proj_data"
+          }
+
+          # Create launcher that sets GDAL/PROJ data paths
+          @"
+          @echo off
+          set "GDAL_DATA=%~dp0gdal_data"
+          set "PROJ_LIB=%~dp0proj_data"
+          start "" "%~dp0MAP_v1.3.exe"
+          "@ | Out-File -FilePath "$pkg\MAP_v1.3.bat" -Encoding ASCII
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAP_v1.3_Windows_${{ github.event.inputs.version }}
+          path: package/
