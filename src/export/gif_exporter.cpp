@@ -1,11 +1,9 @@
 #include "gif_exporter.h"
+#include "raster_renderer.h"
 #include <gdal_priv.h>
 #include <QProcess>
-#include <QDir>
 #include <QImage>
 #include <QTemporaryDir>
-#include <QDebug>
-#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -14,7 +12,7 @@ public:
     std::string lastError;
 
     bool exportToGif(const std::string& multiBandTiffPath,
-                     const GeoTIFFLoader::ColorMap& colorMap,
+                     const RasterRenderer::ColorMap& colorMap,
                      const std::string& outputGifPath,
                      int frameDelay)
     {
@@ -61,36 +59,16 @@ public:
             }
 
             double nodata = band->GetNoDataValue();
-            bool hasNodata = !std::isnan(nodata);
-
-            double minVal = data[0];
-            double maxVal = data[0];
+            double minVal = data[0], maxVal = data[0];
             for (double v : data) {
                 if (std::isnan(v) || std::isinf(v)) continue;
-                if (hasNodata && v == nodata) continue;
+                if (!std::isnan(nodata) && v == nodata) continue;
                 if (v < minVal) minVal = v;
                 if (v > maxVal) maxVal = v;
             }
 
-            QImage frame(width, height, QImage::Format_RGB32);
-            frame.fill(Qt::white);
-
-            double range = maxVal - minVal;
-            int colorCount = colorMap.colors.size();
-
-            for (int i = 0; i < width * height; ++i) {
-                double val = data[i];
-                if (std::isnan(val) || std::isinf(val)) continue;
-                if (hasNodata && val == nodata) continue;
-
-                double t = range > 0 ? (val - minVal) / range : 0.5;
-                t = std::max(0.0, std::min(1.0, t));
-                int colorIdx = static_cast<int>(t * (colorCount - 1));
-                auto [r, g, b, a] = colorMap.colors[colorIdx];
-
-                frame.setPixelColor(i % width, i / width,
-                    QColor::fromRgbF(r, g, b, 1.0));
-            }
+            QImage frame = RasterRenderer::renderFrame(data, width, height, colorMap,
+                                                        minVal, maxVal, nodata);
 
             QString pngPath = frameDir + QString("frame_%1.png").arg(bandIdx, 3, 10, QChar('0'));
             if (frame.save(pngPath, "PNG")) {
@@ -155,7 +133,7 @@ GifExporter::GifExporter() : pImpl(std::make_unique<Impl>()) {}
 GifExporter::~GifExporter() = default;
 
 bool GifExporter::exportToGif(const std::string& multiBandTiffPath,
-                               const GeoTIFFLoader::ColorMap& colorMap,
+                               const RasterRenderer::ColorMap& colorMap,
                                const std::string& outputGifPath,
                                int frameDelay)
 {

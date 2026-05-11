@@ -3,10 +3,9 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QListWidgetItem>
-#include <QMessageBox>
 
 ColorMapDialog::ColorMapDialog(QWidget *parent)
-    : QDialog(parent), selectedMap(GeoTIFFLoader::getDefaultColorMap())
+    : QDialog(parent), selectedMap(RasterRenderer::getDefaultColorMap())
 {
     setWindowTitle("选择 TIFF 色条");
     setFixedSize(400, 500);
@@ -55,13 +54,13 @@ ColorMapDialog::ColorMapDialog(QWidget *parent)
 void ColorMapDialog::populateColorMaps()
 {
     colorMaps.clear();
-    colorMaps.append(GeoTIFFLoader::getDefaultColorMap());
-    colorMaps.append(GeoTIFFLoader::getTerrainColorMap());
-    colorMaps.append(GeoTIFFLoader::getCoolWarmColorMap());
-    colorMaps.append(GeoTIFFLoader::getViridisColorMap());
-    colorMaps.append(GeoTIFFLoader::getPlasmaColorMap());
-    colorMaps.append(GeoTIFFLoader::getSpectralColorMap());
-    colorMaps.append(GeoTIFFLoader::getRdBuColorMap());
+    colorMaps.append(RasterRenderer::getDefaultColorMap());
+    colorMaps.append(RasterRenderer::getTerrainColorMap());
+    colorMaps.append(RasterRenderer::getCoolWarmColorMap());
+    colorMaps.append(RasterRenderer::getViridisColorMap());
+    colorMaps.append(RasterRenderer::getPlasmaColorMap());
+    colorMaps.append(RasterRenderer::getSpectralColorMap());
+    colorMaps.append(RasterRenderer::getRdBuColorMap());
 
     for (int i = 0; i < colorMaps.size(); ++i) {
         const auto& cm = colorMaps[i];
@@ -72,7 +71,7 @@ void ColorMapDialog::populateColorMaps()
     listWidget->setCurrentRow(0);
 }
 
-void ColorMapDialog::updatePreview(const GeoTIFFLoader::ColorMap& cm)
+void ColorMapDialog::updatePreview(const RasterRenderer::ColorMap& cm)
 {
     QPixmap pixmap(previewLabel->size());
     pixmap.fill(Qt::transparent);
@@ -99,7 +98,7 @@ void ColorMapDialog::updatePreview(const GeoTIFFLoader::ColorMap& cm)
     previewLabel->setPixmap(pixmap);
 }
 
-GeoTIFFLoader::ColorMap ColorMapDialog::getSelectedColorMap() const
+RasterRenderer::ColorMap ColorMapDialog::getSelectedColorMap() const
 {
     return selectedMap;
 }

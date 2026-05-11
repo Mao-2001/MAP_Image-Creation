@@ -11,27 +11,40 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets WebEngineWidgets WebChannel)
 find_package(GDAL REQUIRED)
 
 set(SOURCES
-    main.cpp
-    mainwindow.cpp
-    keydialog.cpp
-    geo_tiff_loader.cpp
-    shapefile_loader.cpp
-    colormapdialog.cpp
-    resampledialog.cpp
-    gif_exporter.cpp
+    src/main.cpp
+    src/mainwindow.cpp
+    src/dialogs/keydialog.cpp
+    src/dialogs/colormapdialog.cpp
+    src/dialogs/resampledialog.cpp
+    src/core/geo_tiff_loader.cpp
+    src/core/shapefile_loader.cpp
+    src/core/raster_renderer.cpp
+    src/core/tiff_utils.cpp
+    src/export/gif_exporter.cpp
 )
 
 set(HEADERS
-    mainwindow.h
-    keydialog.h
-    geo_tiff_loader.h
-    shapefile_loader.h
-    colormapdialog.h
-    resampledialog.h
-    gif_exporter.h
+    src/mainwindow.h
+    src/dialogs/keydialog.h
+    src/dialogs/colormapdialog.h
+    src/dialogs/resampledialog.h
+    src/core/geo_tiff_loader.h
+    src/core/shapefile_loader.h
+    src/core/raster_renderer.h
+    src/core/tiff_utils.h
+    src/export/gif_exporter.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+
+target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dialogs
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/export
+)
 
 target_link_libraries(${PROJECT_NAME}
     Qt6::Widgets

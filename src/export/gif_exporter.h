@@ -3,7 +3,7 @@
 
 #include <string>
 #include <memory>
-#include "geo_tiff_loader.h"
+#include "raster_renderer.h"
 
 class GifExporter {
 public:
@@ -11,7 +11,7 @@ public:
     ~GifExporter();
 
     bool exportToGif(const std::string& multiBandTiffPath,
-                     const GeoTIFFLoader::ColorMap& colorMap,
+                     const RasterRenderer::ColorMap& colorMap,
                      const std::string& outputGifPath,
                      int frameDelay = 100);
 

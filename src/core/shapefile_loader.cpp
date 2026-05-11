@@ -1,9 +1,7 @@
 #include "shapefile_loader.h"
 #include <ogrsf_frmts.h>
 #include <cpl_conv.h>
-#include <cpl_string.h>
 #include <sstream>
-#include <iomanip>
 
 class ShapefileLoader::Impl {
 public:
@@ -34,47 +32,7 @@ public:
         return true;
     }
 
-    void parsePolygon(OGRGeometry* geom, Feature& f) {
-        if (geom->getGeometryType() == wkbPolygon) {
-            OGRLinearRing* ring = ((OGRPolygon*)geom)->getExteriorRing();
-            std::vector<std::pair<double, double>> ringCoords;
-            for (int i = 0; i < ring->getNumPoints(); ++i) {
-                ringCoords.push_back({ring->getX(i), ring->getY(i)});
-            }
-            f.coordinates.push_back(ringCoords);
-        } else if (geom->getGeometryType() == wkbMultiPolygon) {
-            OGRMultiPolygon* mp = (OGRMultiPolygon*)geom;
-            for (int i = 0; i < mp->getNumGeometries(); ++i) {
-                OGRPolygon* poly = (OGRPolygon*)mp->getGeometryRef(i);
-                OGRLinearRing* ring = poly->getExteriorRing();
-                std::vector<std::pair<double, double>> ringCoords;
-                for (int j = 0; j < ring->getNumPoints(); ++j) {
-                    ringCoords.push_back({ring->getX(j), ring->getY(j)});
-                }
-                f.coordinates.push_back(ringCoords);
-            }
-        }
-    }
 
-    void parseLineString(OGRGeometry* geom, Feature& f) {
-        if (geom->getGeometryType() == wkbLineString) {
-            OGRLineString* line = (OGRLineString*)geom;
-            std::vector<std::pair<double, double>> lineCoords;
-            for (int i = 0; i < line->getNumPoints(); ++i) {
-                lineCoords.push_back({line->getX(i), line->getY(i)});
-            }
-            f.coordinates.push_back(lineCoords);
-        }
-    }
-
-    void parsePoint(OGRGeometry* geom, Feature& f) {
-        if (geom->getGeometryType() == wkbPoint) {
-            OGRPoint* point = (OGRPoint*)geom;
-            std::vector<std::pair<double, double>> pointCoords;
-            pointCoords.push_back({point->getX(), point->getY()});
-            f.coordinates.push_back(pointCoords);
-        }
-    }
 };
 
 ShapefileLoader::ShapefileLoader() : pImpl(std::make_unique<Impl>()) {}

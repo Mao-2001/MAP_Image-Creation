@@ -7,7 +7,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include "geo_tiff_loader.h"
+#include "raster_renderer.h"
 
 class ColorMapDialog : public QDialog
 {
@@ -15,7 +15,7 @@ class ColorMapDialog : public QDialog
 
 public:
     explicit ColorMapDialog(QWidget *parent = nullptr);
-    GeoTIFFLoader::ColorMap getSelectedColorMap() const;
+    RasterRenderer::ColorMap getSelectedColorMap() const;
 
 private slots:
     void onItemDoubleClicked(QListWidgetItem *item);
@@ -23,14 +23,14 @@ private slots:
 
 private:
     void populateColorMaps();
-    void updatePreview(const GeoTIFFLoader::ColorMap& cm);
+    void updatePreview(const RasterRenderer::ColorMap& cm);
 
     QListWidget *listWidget;
     QLabel *previewLabel;
     QPushButton *okButton;
     QPushButton *cancelButton;
-    QVector<GeoTIFFLoader::ColorMap> colorMaps;
-    GeoTIFFLoader::ColorMap selectedMap;
+    QVector<RasterRenderer::ColorMap> colorMaps;
+    RasterRenderer::ColorMap selectedMap;
 };
 
 #endif // COLORMAPDIALOG_H

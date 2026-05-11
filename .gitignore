@@ -6,3 +6,5 @@ build/
 *.shx
 *.dbf
 *.prj
+.idea/
+CMakeUserPresets.json

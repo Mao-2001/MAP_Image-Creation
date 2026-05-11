@@ -1,11 +1,12 @@
 #include "mainwindow.h"
 #include "keydialog.h"
+#include "raster_renderer.h"
 #include "geo_tiff_loader.h"
 #include "shapefile_loader.h"
 #include "colormapdialog.h"
 #include "resampledialog.h"
 #include "gif_exporter.h"
-#include <QVBoxLayout>
+#include "tiff_utils.h"
 #include <QFile>
 #include <QTextStream>
 #include <QMessageBox>
@@ -15,12 +16,10 @@
 #include <QColorDialog>
 #include <QBuffer>
 #include <QImage>
-#include <QProcess>
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QFileInfo>
 #include <gdal_priv.h>
-#include <ogr_spatialref.h>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -89,7 +88,6 @@ void MainWindow::setupMenu()
     exportGifAction = toolMenu->addAction("导出图片 (PNG/GIF)");
     connect(singleResampleAction, &QAction::triggered, this, &MainWindow::onSingleResample);
     connect(batchResampleAction, &QAction::triggered, this, &MainWindow::onBatchResample);
-    connect(playAnimationAction, &QAction::triggered, this, &MainWindow::onPlayAnimation);
     connect(exportGifAction, &QAction::triggered, this, &MainWindow::onExportCurrent);
 }
 
@@ -143,24 +141,19 @@ void MainWindow::onOpenTiff()
     auto latlon = loader.getWGS84Bounds();
 
     ColorMapDialog dialog(this);
-    GeoTIFFLoader::ColorMap selectedMap = GeoTIFFLoader::getDefaultColorMap();
+    RasterRenderer::ColorMap selectedMap = RasterRenderer::getDefaultColorMap();
 
     if (dialog.exec() == QDialog::Accepted) {
         selectedMap = dialog.getSelectedColorMap();
     }
 
-    auto rgba = loader.renderToRGBA(selectedMap);
+    QImage image = loader.renderToQImage(selectedMap);
 
-    if (rgba.empty()) {
+    if (image.isNull()) {
         QMessageBox::critical(this, "错误", "渲染 TIFF 数据失败！");
         return;
     }
 
-    QImage image(geoInfo.width, geoInfo.height, QImage::Format_ARGB32);
-    for (int i = 0; i < rgba.size() / 4; ++i) {
-        image.setPixelColor(i % geoInfo.width, i / geoInfo.width,
-                          QColor(rgba[i*4], rgba[i*4+1], rgba[i*4+2], rgba[i*4+3]));
-    }
     QByteArray ba;
     QBuffer buffer(&ba);
     buffer.open(QIODevice::WriteOnly);
@@ -260,25 +253,14 @@ void MainWindow::onSingleResample()
         "TIFF Files (*.tif *.tiff)");
     if (output.isEmpty()) return;
 
-    QString resStr = QString::number(resolution);
-
-    QProcess process;
-    process.setProgram("gdalwarp");
-    process.setArguments({"-tr", resStr, resStr,
-                          "-r", QString::fromStdString(method),
-                          "-t_srs", "EPSG:3857",
-                          "-ot", "Float32",
-                          input, output});
-    process.start();
-    process.waitForFinished();
-
-    if (process.exitCode() == 0) {
+    QString errorMsg;
+    if (TiffUtils::runGdalwarp(input, output, resolution, method, errorMsg)) {
         QMessageBox::information(this, "成功",
             QString("降采样完成！\n文件: %1\n分辨率: %2m\n方法: %3\n坐标: EPSG:3857")
                 .arg(output).arg(resolution).arg(QString::fromStdString(method)));
     } else {
         QMessageBox::critical(this, "错误",
-            QString("降采样失败:\n%1").arg(QString::fromUtf8(process.readAllStandardError())));
+            QString("降采样失败:\n%1").arg(errorMsg));
     }
 }
 
@@ -313,20 +295,11 @@ void MainWindow::onBatchResample()
     for (int i = 0; i < total; ++i) {
         QString input = importedTiffFiles[i];
         QString output = resampleDir + QString("resampled_%1.tif").arg(i);
-        QString resStr = QString::number(resolution);
 
-        QProcess process;
-        process.setProgram("gdalwarp");
-        process.setArguments({"-tr", resStr, resStr,
-                              "-r", QString::fromStdString(method),
-                              "-t_srs", "EPSG:3857",
-                              "-ot", "Float32", input, output});
-        process.start();
-        process.waitForFinished();
-
-        if (process.exitCode() != 0) {
+        QString errorMsg;
+        if (!TiffUtils::runGdalwarp(input, output, resolution, method, errorMsg)) {
             QMessageBox::critical(this, "错误",
-                QString("降采样失败: %1\n%2").arg(input, QString::fromUtf8(process.readAllStandardError())));
+                QString("降采样失败: %1\n%2").arg(input).arg(errorMsg));
             error = true;
             break;
         }
@@ -334,7 +307,7 @@ void MainWindow::onBatchResample()
     }
 
     if (!error) {
-        error = !createMultiBandTiff(resampledFiles, outputFile);
+        error = !TiffUtils::createMultiBandTiff(resampledFiles, outputFile);
         if (!error) {
             QString orderInfo = "波段顺序按文件选择顺序排列:\n";
             for (int i = 0; i < importedTiffFiles.size(); ++i) {
@@ -350,73 +323,6 @@ void MainWindow::onBatchResample()
     }
 
     for (const QString& f : resampledFiles) QFile::remove(f);
-}
-
-bool MainWindow::createMultiBandTiff(const QStringList& inputFiles, const QString& outputFile)
-{
-    if (inputFiles.isEmpty()) return false;
-
-    GDALAllRegister();
-
-    GDALDataset* firstDS = (GDALDataset*)GDALOpen(inputFiles[0].toStdString().c_str(), GA_ReadOnly);
-    if (!firstDS) return false;
-
-    int width = firstDS->GetRasterXSize();
-    int height = firstDS->GetRasterYSize();
-    double gt[6];
-    firstDS->GetGeoTransform(gt);
-    const char* projRef = firstDS->GetProjectionRef();
-    GDALClose(firstDS);
-
-    GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("GTiff");
-    if (!driver) return false;
-
-    GDALDataset* dstDS = driver->Create(outputFile.toStdString().c_str(),
-                                         width, height, inputFiles.size(), GDT_Float32, nullptr);
-    if (!dstDS) return false;
-
-    dstDS->SetGeoTransform(gt);
-    if (projRef && strlen(projRef) > 0) {
-        dstDS->SetProjection(projRef);
-    }
-
-    bool ok = true;
-    for (int i = 0; i < inputFiles.size(); ++i) {
-        GDALDataset* srcDS = (GDALDataset*)GDALOpen(inputFiles[i].toStdString().c_str(), GA_ReadOnly);
-        if (!srcDS) { ok = false; break; }
-
-        if (srcDS->GetRasterXSize() != width || srcDS->GetRasterYSize() != height) {
-            GDALClose(srcDS);
-            ok = false;
-            break;
-        }
-
-        GDALRasterBand* srcBand = srcDS->GetRasterBand(1);
-        GDALRasterBand* dstBand = dstDS->GetRasterBand(i + 1);
-
-        std::vector<float> buf(width * height);
-        if (srcBand->RasterIO(GF_Read, 0, 0, width, height,
-                              buf.data(), width, height, GDT_Float32, 0, 0) != CE_None) {
-            ok = false;
-            GDALClose(srcDS);
-            break;
-        }
-        if (dstBand->RasterIO(GF_Write, 0, 0, width, height,
-                              buf.data(), width, height, GDT_Float32, 0, 0) != CE_None) {
-            ok = false;
-            GDALClose(srcDS);
-            break;
-        }
-
-        int hasNoData = 0;
-        double nodata = srcBand->GetNoDataValue(&hasNoData);
-        if (hasNoData) dstBand->SetNoDataValue(nodata);
-
-        GDALClose(srcDS);
-    }
-
-    GDALClose(dstDS);
-    return ok;
 }
 
 void MainWindow::onPlayAnimation()
@@ -450,59 +356,8 @@ void MainWindow::onPlayAnimation()
     double gt[6];
     dataset->GetGeoTransform(gt);
 
-    double cornersX[4] = {gt[0], gt[0] + width * gt[1], gt[0], gt[0] + width * gt[1]};
-    double cornersY[4] = {gt[3], gt[3], gt[3] + height * gt[5], gt[3] + height * gt[5]};
-
-    OGRSpatialReference srcSRS, wgs84SRS;
-    wgs84SRS.importFromEPSG(4326);
-    wgs84SRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     const char* projStr = dataset->GetProjectionRef();
-    bool geoOk = false;
-    if (projStr && strlen(projStr) > 0) {
-        srcSRS.importFromWkt(projStr);
-        if (!srcSRS.IsSame(&wgs84SRS)) {
-            OGRCoordinateTransformation* ct =
-                OGRCreateCoordinateTransformation(&srcSRS, &wgs84SRS);
-            if (ct) {
-                geoOk = ct->Transform(4, cornersX, cornersY);
-                OGRCoordinateTransformation::DestroyCT(ct);
-            }
-        } else {
-            geoOk = true;
-        }
-    }
-    if (!geoOk) {
-        double ulX = gt[0], ulY = gt[3];
-        double lrX = gt[0] + width * gt[1], lrY = gt[3] + height * gt[5];
-
-        // 值超出经纬度范围 → 可能是投影坐标系（如 3857），尝试变换
-        if (std::abs(ulX) > 180 || std::abs(lrX) > 180 ||
-            std::abs(ulY) > 90  || std::abs(lrY) > 90) {
-            OGRSpatialReference mercSRS;
-            mercSRS.importFromEPSG(3857);
-            mercSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
-            OGRCoordinateTransformation* ct =
-                OGRCreateCoordinateTransformation(&mercSRS, &wgs84SRS);
-            if (ct) {
-                cornersX[0] = ulX; cornersY[0] = ulY;
-                cornersX[1] = lrX; cornersY[1] = ulY;
-                cornersX[2] = ulX; cornersY[2] = lrY;
-                cornersX[3] = lrX; cornersY[3] = lrY;
-                ct->Transform(4, cornersX, cornersY);
-                OGRCoordinateTransformation::DestroyCT(ct);
-            }
-        } else {
-            cornersX[0] = ulX; cornersY[0] = ulY;
-            cornersX[1] = lrX; cornersY[1] = ulY;
-            cornersX[2] = ulX; cornersY[2] = lrY;
-            cornersX[3] = lrX; cornersY[3] = lrY;
-        }
-    }
-
-    double west  = *std::min_element(cornersX, cornersX + 4);
-    double east  = *std::max_element(cornersX, cornersX + 4);
-    double south = *std::min_element(cornersY, cornersY + 4);
-    double north = *std::max_element(cornersY, cornersY + 4);
+    auto bounds = TiffUtils::computeWGS84Bounds(gt, width, height, projStr);
 
     QString js = "playAnimation([";
 
@@ -515,31 +370,16 @@ void MainWindow::onPlayAnimation()
                            data.data(), width, height, GDT_Float64, 0, 0) != CE_None) continue;
 
         double nodata = band->GetNoDataValue();
-        bool hasNodata = !std::isnan(nodata);
-
         double minVal = data[0], maxVal = data[0];
         for (double v : data) {
             if (std::isnan(v) || std::isinf(v)) continue;
-            if (hasNodata && v == nodata) continue;
+            if (!std::isnan(nodata) && v == nodata) continue;
             if (v < minVal) minVal = v;
             if (v > maxVal) maxVal = v;
         }
 
-        QImage frame(width, height, QImage::Format_RGB32);
-        frame.fill(Qt::white);
-
-        double range = maxVal - minVal;
-        int colorCount = selectedMap.colors.size();
-        for (int i = 0; i < width * height; ++i) {
-            double val = data[i];
-            if (std::isnan(val) || std::isinf(val)) continue;
-            if (hasNodata && val == nodata) continue;
-            double t = range > 0 ? (val - minVal) / range : 0.5;
-            t = std::max(0.0, std::min(1.0, t));
-            int ci = static_cast<int>(t * (colorCount - 1));
-            auto [r, g, b_, a] = selectedMap.colors[ci];
-            frame.setPixelColor(i % width, i / width, QColor::fromRgbF(r, g, b_));
-        }
+        QImage frame = RasterRenderer::renderFrame(data, width, height, selectedMap,
+                                                    minVal, maxVal, nodata);
 
         QByteArray ba;
         QBuffer buf(&ba);
@@ -553,8 +393,8 @@ void MainWindow::onPlayAnimation()
     GDALClose(dataset);
 
     js += QString("],[[%1,%2],[%3,%4]],10);")
-        .arg(south, 0, 'f', 6).arg(west, 0, 'f', 6)
-        .arg(north, 0, 'f', 6).arg(east, 0, 'f', 6);
+        .arg(bounds.south, 0, 'f', 6).arg(bounds.west, 0, 'f', 6)
+        .arg(bounds.north, 0, 'f', 6).arg(bounds.east, 0, 'f', 6);
 
     webView->page()->runJavaScript(js);
 
@@ -604,14 +444,3 @@ void MainWindow::onExportCurrent()
     }
 }
 
-void MainWindow::addTiffLayer(const QString& base64Image, const QString& bounds)
-{
-    QString js = QString("addTiffImage('%1', %2);").arg(base64Image).arg(bounds);
-    webView->page()->runJavaScript(js);
-}
-
-void MainWindow::addShapefileLayer(const QString& geojson, const QString& color)
-{
-    QString js = QString("addShapefileLayer('%1');").arg(geojson);
-    webView->page()->runJavaScript(js);
-}

@@ -2,22 +2,14 @@
 #define SHAPEFILE_LOADER_H
 
 #include <string>
-#include <vector>
 #include <memory>
 
 class ShapefileLoader {
 public:
-    struct Feature {
-        std::string type; // "Polygon", "LineString", "Point"
-        std::vector<std::vector<std::pair<double, double>>> coordinates; // 支持 MultiPolygon
-        std::string properties;
-    };
-
     struct LayerInfo {
         std::string name;
         std::string geometryType;
         int featureCount;
-        std::vector<Feature> features;
     };
 
     ShapefileLoader();

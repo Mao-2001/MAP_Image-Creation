@@ -9,6 +9,7 @@
 #include <QAction>
 #include <QStringList>
 #include <QImage>
+#include "raster_renderer.h"
 #include "geo_tiff_loader.h"
 
 class MainWindow : public QMainWindow
@@ -48,15 +49,12 @@ private:
     ExportState exportState = ExportNone;
     QImage exportImage;                          // ExportSingleTiff 时使用
     QString exportAnimPath;                      // ExportAnimation 时使用
-    GeoTIFFLoader::ColorMap exportColorMap;
+    RasterRenderer::ColorMap exportColorMap;
 
     void loadKey();
     void saveKey(const QString &key);
     void loadMap();
     void setupMenu();
-    void addTiffLayer(const QString& base64Image, const QString& bounds);
-    void addShapefileLayer(const QString& geojson, const QString& color);
-    bool createMultiBandTiff(const QStringList& inputFiles, const QString& outputFile);
 };
 
 #endif // MAINWINDOW_H
