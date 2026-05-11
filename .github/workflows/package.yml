@@ -23,7 +23,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
-          modules: qtwebengine qtwebchannel qtpositioning qtdeclarative qtshadertools qtsvg
+          modules: qtwebengine qtwebchannel qtpositioning qtshadertools
 
       - name: Install GDAL via vcpkg
         run: vcpkg install gdal[core,tools]:x64-windows
