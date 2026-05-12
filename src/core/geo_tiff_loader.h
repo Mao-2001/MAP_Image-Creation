@@ -25,7 +25,7 @@ public:
     GeoTIFFLoader();
     ~GeoTIFFLoader();
 
-    bool load(const std::string& filename);
+    bool load(const std::string& filename, std::string* errorOut = nullptr);
     GeoInfo getGeoInfo() const;
     LatLonBounds getWGS84Bounds() const;
     QImage renderToQImage(const RasterRenderer::ColorMap& colorMap) const;

@@ -94,21 +94,36 @@ public:
         }
         args << QString::fromStdString(outputGifPath);
 
-        // ImageMagick 7: 用 magick 替代 convert
-        QString program = "magick";
-        QProcess which;
-        which.setProgram("which");
-        which.setArguments({"magick"});
-        which.start();
-        which.waitForFinished();
-        if (which.exitCode() != 0) {
+        // 检查 ImageMagick 是否可用
+        auto checkProgram = [](const QString& name) -> bool {
+            QProcess chk;
+            chk.setProgram(name);
+            chk.setArguments({"--version"});
+            chk.start();
+            return chk.waitForFinished(5000) && chk.exitCode() == 0;
+        };
+
+        QString program;
+        if (checkProgram("magick"))
+            program = "magick";
+        else if (checkProgram("convert"))
             program = "convert";
+
+        if (program.isEmpty()) {
+            lastError = "ImageMagick (magick/convert) 未找到，无法生成 GIF";
+            for (const QString& f : frameFiles) QFile::remove(f);
+            return false;
         }
 
         process.setProgram(program);
         process.setArguments(args);
         process.start();
-        process.waitForFinished();
+        if (!process.waitForFinished(120000)) {
+            process.kill();
+            lastError = "ImageMagick 执行超时（>2分钟）";
+            for (const QString& f : frameFiles) QFile::remove(f);
+            return false;
+        }
 
         for (const QString& f : frameFiles) {
             QFile::remove(f);
@@ -121,7 +136,7 @@ public:
         }
 
         if (!QFile::exists(QString::fromStdString(outputGifPath))) {
-            lastError = "GIF 文件未生成: " + outputGifPath;
+            lastError = "GIF 文件未生成，请确保路径可写: " + outputGifPath;
             return false;
         }
 

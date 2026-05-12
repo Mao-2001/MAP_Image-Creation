@@ -15,7 +15,7 @@ public:
     ShapefileLoader();
     ~ShapefileLoader();
 
-    bool load(const std::string& filename);
+    bool load(const std::string& filename, std::string* errorOut = nullptr);
     LayerInfo getLayerInfo() const;
     std::string toGeoJSON(const std::string& color = "#3388ff", double opacity = 0.6);
 

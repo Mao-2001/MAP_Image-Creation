@@ -132,8 +132,10 @@ void MainWindow::onOpenTiff()
     if (fileName.isEmpty()) return;
 
     GeoTIFFLoader loader;
-    if (!loader.load(fileName.toStdString())) {
-        QMessageBox::critical(this, "错误", "无法加载 TIFF 文件！");
+    std::string tiffError;
+    if (!loader.load(fileName.toStdString(), &tiffError)) {
+        QMessageBox::critical(this, "错误",
+            QString("无法加载 TIFF 文件！\n%1").arg(QString::fromStdString(tiffError)));
         return;
     }
 
@@ -150,7 +152,10 @@ void MainWindow::onOpenTiff()
     QImage image = loader.renderToQImage(selectedMap);
 
     if (image.isNull()) {
-        QMessageBox::critical(this, "错误", "渲染 TIFF 数据失败！");
+        QMessageBox::critical(this, "错误",
+            QString("渲染 TIFF 数据失败！\n尺寸: %1x%2, 数据点: %3")
+                .arg(geoInfo.width).arg(geoInfo.height)
+                .arg(geoInfo.width * geoInfo.height));
         return;
     }
 
@@ -189,8 +194,10 @@ void MainWindow::onOpenShapefile()
     if (!color.isValid()) return;
 
     ShapefileLoader loader;
-    if (!loader.load(fileName.toStdString())) {
-        QMessageBox::critical(this, "错误", "无法加载 SHP 文件！");
+    std::string shpError;
+    if (!loader.load(fileName.toStdString(), &shpError)) {
+        QMessageBox::critical(this, "错误",
+            QString("无法加载 SHP 文件！\n%1").arg(QString::fromStdString(shpError)));
         return;
     }
 
@@ -201,7 +208,9 @@ void MainWindow::onOpenShapefile()
     // 使用 QJsonDocument 验证和格式化 JSON
     QJsonDocument doc = QJsonDocument::fromJson(geojson.toUtf8());
     if (doc.isNull()) {
-        QMessageBox::critical(this, "错误", "GeoJSON 格式错误！");
+        QMessageBox::critical(this, "错误",
+            QString("GeoJSON 格式错误！\n原始输出前 200 字符:\n%1")
+                .arg(geojson.left(200)));
         return;
     }
 
@@ -283,7 +292,8 @@ void MainWindow::onBatchResample()
 
     QTemporaryDir tmpDir;
     if (!tmpDir.isValid()) {
-        QMessageBox::critical(this, "错误", "无法创建临时目录");
+        QMessageBox::critical(this, "错误",
+            QString("无法创建临时目录: %1").arg(tmpDir.errorString()));
         return;
     }
     QString resampleDir = tmpDir.path() + "/";
@@ -341,7 +351,8 @@ void MainWindow::onPlayAnimation()
 
     GDALDataset* dataset = (GDALDataset*)GDALOpen(tiffFile.toStdString().c_str(), GA_ReadOnly);
     if (!dataset) {
-        QMessageBox::critical(this, "错误", "无法打开文件！");
+        QMessageBox::critical(this, "错误",
+            QString("无法打开多波段文件！\n%1").arg(CPLGetLastErrorMsg()));
         return;
     }
 
@@ -425,7 +436,8 @@ void MainWindow::onExportCurrent()
                 QString("PNG 导出成功！\n文件: %1\n色条: %2")
                     .arg(fileName).arg(QString::fromStdString(exportColorMap.name)));
         } else {
-            QMessageBox::critical(this, "错误", "PNG 导出失败！");
+            QMessageBox::critical(this, "错误",
+                QString("PNG 导出失败！\n路径: %1").arg(fileName));
         }
         return;
     }

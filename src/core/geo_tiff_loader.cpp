@@ -21,9 +21,12 @@ public:
         if (dataset) GDALClose(dataset);
     }
 
-    bool load(const std::string& filename) {
+    bool load(const std::string& filename, std::string* errorOut) {
         dataset = (GDALDataset*)GDALOpen(filename.c_str(), GA_ReadOnly);
-        if (!dataset) return false;
+        if (!dataset) {
+            if (errorOut) *errorOut = CPLGetLastErrorMsg();
+            return false;
+        }
 
         info.width = dataset->GetRasterXSize();
         info.height = dataset->GetRasterYSize();
@@ -45,6 +48,7 @@ public:
 
         if (band->RasterIO(GF_Read, 0, 0, info.width, info.height,
                           rasterData.data(), info.width, info.height, GDT_Float64, 0, 0) != CE_None) {
+            if (errorOut) *errorOut = CPLGetLastErrorMsg();
             return false;
         }
 
@@ -83,6 +87,9 @@ public:
                     OGRCreateCoordinateTransformation(&srcSRS, &wgs84SRS);
                 if (ct) {
                     transformOk = ct->Transform(4, cornersX, cornersY);
+                    if (!transformOk) {
+                        qWarning("SRS→WGS84 transform failed in computeBoundsInWGS84");
+                    }
                     OGRCoordinateTransformation::DestroyCT(ct);
                 }
             } else {
@@ -99,7 +106,9 @@ public:
                 OGRCoordinateTransformation* ct =
                     OGRCreateCoordinateTransformation(&mercSRS, &wgs84SRS);
                 if (ct) {
-                    ct->Transform(4, cornersX, cornersY);
+                    if (!ct->Transform(4, cornersX, cornersY)) {
+                        qWarning("3857→WGS84 fallback transform failed in computeBoundsInWGS84");
+                    }
                     OGRCoordinateTransformation::DestroyCT(ct);
                     west = *std::min_element(cornersX, cornersX + 4);
                     east = *std::max_element(cornersX, cornersX + 4);
@@ -122,8 +131,8 @@ public:
 GeoTIFFLoader::GeoTIFFLoader() : pImpl(std::make_unique<Impl>()) {}
 GeoTIFFLoader::~GeoTIFFLoader() = default;
 
-bool GeoTIFFLoader::load(const std::string& filename) {
-    return pImpl->load(filename);
+bool GeoTIFFLoader::load(const std::string& filename, std::string* errorOut) {
+    return pImpl->load(filename, errorOut);
 }
 
 GeoTIFFLoader::GeoInfo GeoTIFFLoader::getGeoInfo() const {

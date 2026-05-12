@@ -15,7 +15,11 @@ bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString
     GDALAllRegister();
 
     GDALDataset* firstDS = (GDALDataset*)GDALOpen(inputFiles[0].toStdString().c_str(), GA_ReadOnly);
-    if (!firstDS) return false;
+    if (!firstDS) {
+        errorDetail = QString("无法打开首文件: %1\n%2")
+            .arg(inputFiles[0]).arg(CPLGetLastErrorMsg());
+        return false;
+    }
 
     int width = firstDS->GetRasterXSize();
     int height = firstDS->GetRasterYSize();
@@ -25,11 +29,18 @@ bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString
     GDALClose(firstDS);
 
     GDALDriver* driver = GetGDALDriverManager()->GetDriverByName("GTiff");
-    if (!driver) return false;
+    if (!driver) {
+        errorDetail = "GDAL 未注册 GTiff 驱动";
+        return false;
+    }
 
     GDALDataset* dstDS = driver->Create(outputFile.toStdString().c_str(),
                                          width, height, inputFiles.size(), GDT_Float32, nullptr);
-    if (!dstDS) return false;
+    if (!dstDS) {
+        errorDetail = QString("无法创建输出文件: %1\n%2")
+            .arg(outputFile).arg(CPLGetLastErrorMsg());
+        return false;
+    }
 
     dstDS->SetGeoTransform(gt);
     if (projRef && strlen(projRef) > 0) {
@@ -37,7 +48,6 @@ bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString
     }
 
     bool ok = true;
-    QString errorDetail;
     for (int i = 0; i < inputFiles.size(); ++i) {
         GDALDataset* srcDS = (GDALDataset*)GDALOpen(inputFiles[i].toStdString().c_str(), GA_ReadOnly);
         if (!srcDS) {
@@ -61,12 +71,16 @@ bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString
         std::vector<float> buf(width * height);
         if (srcBand->RasterIO(GF_Read, 0, 0, width, height,
                               buf.data(), width, height, GDT_Float32, 0, 0) != CE_None) {
+            errorDetail = QString("读取波段 %1 失败: %2")
+                .arg(i + 1).arg(CPLGetLastErrorMsg());
             ok = false;
             GDALClose(srcDS);
             break;
         }
         if (dstBand->RasterIO(GF_Write, 0, 0, width, height,
                               buf.data(), width, height, GDT_Float32, 0, 0) != CE_None) {
+            errorDetail = QString("写入波段 %1 失败: %2")
+                .arg(i + 1).arg(CPLGetLastErrorMsg());
             ok = false;
             GDALClose(srcDS);
             break;
@@ -125,7 +139,9 @@ TiffUtils::LatLonBounds TiffUtils::computeWGS84Bounds(const double gt[6], int wi
                 cornersX[1] = lrX; cornersY[1] = ulY;
                 cornersX[2] = ulX; cornersY[2] = lrY;
                 cornersX[3] = lrX; cornersY[3] = lrY;
-                ct->Transform(4, cornersX, cornersY);
+                if (!ct->Transform(4, cornersX, cornersY)) {
+                    qWarning("3857→4326 transform failed in computeWGS84Bounds fallback");
+                }
                 OGRCoordinateTransformation::DestroyCT(ct);
             }
         } else {

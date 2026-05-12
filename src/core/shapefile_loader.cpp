@@ -17,12 +17,18 @@ public:
         if (dataset) GDALClose(dataset);
     }
 
-    bool load(const std::string& filename) {
+    bool load(const std::string& filename, std::string* errorOut) {
         dataset = (GDALDataset*)GDALOpenEx(filename.c_str(), GDAL_OF_VECTOR, nullptr, nullptr, nullptr);
-        if (!dataset) return false;
+        if (!dataset) {
+            if (errorOut) *errorOut = CPLGetLastErrorMsg();
+            return false;
+        }
 
         layer = dataset->GetLayer(0);
-        if (!layer) return false;
+        if (!layer) {
+            if (errorOut) *errorOut = "数据集中没有图层";
+            return false;
+        }
 
         info.name = layer->GetName();
         OGRwkbGeometryType geomType = layer->GetGeomType();
@@ -38,8 +44,8 @@ public:
 ShapefileLoader::ShapefileLoader() : pImpl(std::make_unique<Impl>()) {}
 ShapefileLoader::~ShapefileLoader() = default;
 
-bool ShapefileLoader::load(const std::string& filename) {
-    return pImpl->load(filename);
+bool ShapefileLoader::load(const std::string& filename, std::string* errorOut) {
+    return pImpl->load(filename, errorOut);
 }
 
 ShapefileLoader::LayerInfo ShapefileLoader::getLayerInfo() const {
