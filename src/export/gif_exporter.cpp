@@ -4,6 +4,8 @@
 #include <QProcess>
 #include <QImage>
 #include <QTemporaryDir>
+#include <QCoreApplication>
+#include <QFile>
 #include <cmath>
 #include <vector>
 
@@ -94,20 +96,23 @@ public:
         }
         args << QString::fromStdString(outputGifPath);
 
-        // 检查 ImageMagick 是否可用
-        auto checkProgram = [](const QString& name) -> bool {
-            QProcess chk;
-            chk.setProgram(name);
-            chk.setArguments({"--version"});
-            chk.start();
-            return chk.waitForFinished(5000) && chk.exitCode() == 0;
+        // 检查 ImageMagick 是否可用（优先程序目录，再查 PATH）
+        QString appDir = QCoreApplication::applicationDirPath();
+        auto findProgram = [&](const QString& name) -> QString {
+            QStringList candidates = {appDir + "/" + name, name};
+            for (const QString& exe : candidates) {
+                QProcess chk;
+                chk.setProgram(exe);
+                chk.setArguments({"--version"});
+                chk.start();
+                if (chk.waitForFinished(5000) && chk.exitCode() == 0)
+                    return exe;
+            }
+            return {};
         };
 
-        QString program;
-        if (checkProgram("magick"))
-            program = "magick";
-        else if (checkProgram("convert"))
-            program = "convert";
+        QString program = findProgram("magick");
+        if (program.isEmpty()) program = findProgram("convert");
 
         if (program.isEmpty()) {
             lastError = "ImageMagick (magick/convert) 未找到，无法生成 GIF";
@@ -118,6 +123,11 @@ public:
         process.setProgram(program);
         process.setArguments(args);
         process.start();
+        if (!process.waitForStarted(10000)) {
+            lastError = "无法启动 " + program.toStdString() + ": " + process.errorString().toStdString();
+            for (const QString& f : frameFiles) QFile::remove(f);
+            return false;
+        }
         if (!process.waitForFinished(120000)) {
             process.kill();
             lastError = "ImageMagick 执行超时（>2分钟）";

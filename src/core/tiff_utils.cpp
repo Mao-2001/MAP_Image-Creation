@@ -3,6 +3,7 @@
 #include <ogr_spatialref.h>
 #include <QProcess>
 #include <QFile>
+#include <QCoreApplication>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -167,12 +168,22 @@ bool TiffUtils::runGdalwarp(const QString& input, const QString& output,
 {
     QProcess process;
     QString resStr = QString::number(resolution);
-    process.setProgram("gdalwarp");
+
+    // 优先使用程序目录下的 gdalwarp（Windows 打包需要）
+    QString gdalwarpPath = QCoreApplication::applicationDirPath() + "/gdalwarp";
+    if (!QFile::exists(gdalwarpPath + ".exe"))
+        gdalwarpPath = "gdalwarp";
+
+    process.setProgram(gdalwarpPath);
     process.setArguments({"-tr", resStr, resStr,
                           "-r", QString::fromStdString(method),
                           "-t_srs", "EPSG:3857",
                           "-ot", "Float32", input, output});
     process.start();
+    if (!process.waitForStarted(10000)) {
+        errorOutput = QString("无法启动 gdalwarp: %1").arg(process.errorString());
+        return false;
+    }
     if (!process.waitForFinished(300000)) {
         process.kill();
         process.waitForFinished(5000);
