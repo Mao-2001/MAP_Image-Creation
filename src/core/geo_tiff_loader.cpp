@@ -77,6 +77,7 @@ public:
         bool transformOk = false;
         if (!info.projection.empty()) {
             srcSRS.importFromWkt(info.projection.c_str());
+            srcSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
             if (!srcSRS.IsSame(&wgs84SRS)) {
                 OGRCoordinateTransformation* ct =
                     OGRCreateCoordinateTransformation(&srcSRS, &wgs84SRS);

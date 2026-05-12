@@ -87,6 +87,7 @@ TiffUtils::LatLonBounds TiffUtils::computeWGS84Bounds(const double gt[6], int wi
     bool geoOk = false;
     if (projRef && strlen(projRef) > 0) {
         srcSRS.importFromWkt(projRef);
+        srcSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         if (!srcSRS.IsSame(&wgs84SRS)) {
             OGRCoordinateTransformation* ct =
                 OGRCreateCoordinateTransformation(&srcSRS, &wgs84SRS);
