@@ -307,7 +307,8 @@ void MainWindow::onBatchResample()
     }
 
     if (!error) {
-        error = !TiffUtils::createMultiBandTiff(resampledFiles, outputFile);
+        QString mergeError;
+        error = !TiffUtils::createMultiBandTiff(resampledFiles, outputFile, mergeError);
         if (!error) {
             QString orderInfo = "波段顺序按文件选择顺序排列:\n";
             for (int i = 0; i < importedTiffFiles.size(); ++i) {
@@ -318,7 +319,8 @@ void MainWindow::onBatchResample()
                 QString("降采样完成！共 %1 个波段\n保存至: %2\n\n%3")
                     .arg(resampledFiles.size()).arg(outputFile).arg(orderInfo));
         } else {
-            QMessageBox::critical(this, "错误", "合并多波段 TIFF 失败！\n各文件尺寸不一致或读取错误。");
+            QMessageBox::critical(this, "错误",
+                QString("合并多波段 TIFF 失败:\n%1").arg(mergeError));
         }
     }
 

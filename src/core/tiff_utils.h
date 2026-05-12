@@ -10,7 +10,8 @@ namespace TiffUtils {
         double west, south, east, north;
     };
 
-    bool createMultiBandTiff(const QStringList& inputFiles, const QString& outputFile);
+    bool createMultiBandTiff(const QStringList& inputFiles, const QString& outputFile,
+                             QString& errorDetail);
     LatLonBounds computeWGS84Bounds(const double gt[6], int width, int height, const char* projRef);
     bool runGdalwarp(const QString& input, const QString& output,
                      double resolution, const std::string& method,

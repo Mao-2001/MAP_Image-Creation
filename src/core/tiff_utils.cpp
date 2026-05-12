@@ -7,9 +7,10 @@
 #include <cstring>
 #include <vector>
 
-bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString& outputFile)
+bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString& outputFile,
+                                     QString& errorDetail)
 {
-    if (inputFiles.isEmpty()) return false;
+    if (inputFiles.isEmpty()) { errorDetail = "文件列表为空"; return false; }
 
     GDALAllRegister();
 
@@ -36,11 +37,19 @@ bool TiffUtils::createMultiBandTiff(const QStringList& inputFiles, const QString
     }
 
     bool ok = true;
+    QString errorDetail;
     for (int i = 0; i < inputFiles.size(); ++i) {
         GDALDataset* srcDS = (GDALDataset*)GDALOpen(inputFiles[i].toStdString().c_str(), GA_ReadOnly);
-        if (!srcDS) { ok = false; break; }
+        if (!srcDS) {
+            errorDetail = QString("无法打开: %1").arg(inputFiles[i]);
+            ok = false; break;
+        }
 
-        if (srcDS->GetRasterXSize() != width || srcDS->GetRasterYSize() != height) {
+        int w = srcDS->GetRasterXSize();
+        int h = srcDS->GetRasterYSize();
+        if (w != width || h != height) {
+            errorDetail = QString("尺寸不匹配: 期望 %1x%2, 文件 %3 为 %4x%5")
+                .arg(width).arg(height).arg(inputFiles[i]).arg(w).arg(h);
             GDALClose(srcDS);
             ok = false;
             break;
@@ -147,10 +156,20 @@ bool TiffUtils::runGdalwarp(const QString& input, const QString& output,
                           "-t_srs", "EPSG:3857",
                           "-ot", "Float32", input, output});
     process.start();
-    process.waitForFinished();
+    if (!process.waitForFinished(300000)) {
+        process.kill();
+        process.waitForFinished(5000);
+        errorOutput = "执行超时（>5分钟）";
+        return false;
+    }
 
     if (process.exitCode() != 0) {
         errorOutput = QString::fromUtf8(process.readAllStandardError());
+        return false;
+    }
+
+    if (!QFile::exists(output)) {
+        errorOutput = "gdalwarp 返回成功但未生成输出文件";
         return false;
     }
     return true;

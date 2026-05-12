@@ -82,6 +82,21 @@ jobs:
               Write-Warning "gdal_data not found, coordinate transforms may fail"
           }
 
+          # ImageMagick (for GIF export)
+          $imDir = Get-ChildItem "C:/Program Files/ImageMagick-*" | Select-Object -First 1
+          if ($imDir) {
+              Copy-Item "$($imDir.FullName)/magick.exe" $pkg
+              if (Test-Path "$($imDir.FullName)/bin") {
+                  Copy-Item "$($imDir.FullName)/bin/*.dll" $pkg
+              }
+              if (Test-Path "$($imDir.FullName)/modules") {
+                  Copy-Item "$($imDir.FullName)/modules" "$pkg/modules" -Recurse
+              }
+              Write-Host "ImageMagick bundled from $($imDir.FullName)"
+          } else {
+              Write-Warning "ImageMagick not found, GIF export will fail"
+          }
+
           # Create launcher that sets GDAL/PROJ data paths
           @"
           @echo off
