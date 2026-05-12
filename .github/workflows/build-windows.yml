@@ -25,7 +25,7 @@ jobs:
         with:
           version: '6.8.*'
           arch: 'win64_msvc2022_64'
-          modules: qtwebengine qtwebchannel
+          modules: qtwebengine qtwebchannel qtpositioning
 
       - name: Install ImageMagick (for GIF export)
         run: choco install imagemagick --no-progress -y
