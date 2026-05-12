@@ -52,17 +52,34 @@ jobs:
           # Qt DLLs + platform plugins (windeployqt)
           windeployqt "$pkg\MAP_v1.3.exe"
 
-          # GDAL DLLs from vcpkg
-          $vcpkgBin = "$env:VCPKG_ROOT\installed\x64-windows\bin"
-          Get-ChildItem $vcpkgBin -Filter "*.dll" | Copy-Item -Destination $pkg
+          # Find vcpkg installed directory (could be in multiple locations)
+          $vcpkgRoots = @(
+              "build\vcpkg_installed",
+              "vcpkg_installed",
+              "$env:VCPKG_ROOT\installed"
+          ) | Where-Object { Test-Path "$_\x64-windows" } | Select-Object -First 1
+          if (-not $vcpkgRoots) { throw "Cannot find vcpkg installed directory" }
+          $vcpkgDir = "$vcpkgRoots\x64-windows"
 
-          # GDAL data files (for coordinate system support)
-          $vcpkgShare = "$env:VCPKG_ROOT\installed\x64-windows\share"
-          if (Test-Path "$vcpkgShare\gdal") {
-            Copy-Item -Recurse "$vcpkgShare\gdal" "$pkg\gdal_data"
+          # GDAL DLLs
+          if (Test-Path "$vcpkgDir\bin") {
+              Get-ChildItem "$vcpkgDir\bin" -Filter "*.dll" | Copy-Item -Destination $pkg
           }
-          if (Test-Path "$vcpkgShare\proj") {
-            Copy-Item -Recurse "$vcpkgShare\proj" "$pkg\proj_data"
+
+          # GDAL tools (gdalwarp.exe)
+          if (Test-Path "$vcpkgDir\tools\gdal") {
+              Copy-Item "$vcpkgDir\tools\gdal\gdalwarp.exe" $pkg
+          }
+
+          # GDAL data files
+          if (Test-Path "$vcpkgDir\share\gdal") {
+              Copy-Item -Recurse "$vcpkgDir\share\gdal" "$pkg\gdal_data"
+          }
+          if (Test-Path "$vcpkgDir\share\proj") {
+              Copy-Item -Recurse "$vcpkgDir\share\proj" "$pkg\proj_data"
+          }
+          if (-not (Test-Path "$pkg\gdal_data")) {
+              Write-Warning "gdal_data not found, coordinate transforms may fail"
           }
 
           # Create launcher that sets GDAL/PROJ data paths
