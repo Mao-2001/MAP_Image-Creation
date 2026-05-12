@@ -2,6 +2,7 @@
 #include <gdal_priv.h>
 #include <ogr_spatialref.h>
 #include <QProcess>
+#include <QFile>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
