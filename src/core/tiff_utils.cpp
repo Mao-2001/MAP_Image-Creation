@@ -169,9 +169,8 @@ bool TiffUtils::runGdalwarp(const QString& input, const QString& output,
     QProcess process;
     QString resStr = QString::number(resolution);
 
-    // 优先使用程序目录下的 gdalwarp（Windows 打包需要）
-    QString gdalwarpPath = QCoreApplication::applicationDirPath() + "/gdalwarp";
-    if (!QFile::exists(gdalwarpPath + ".exe"))
+    QString gdalwarpPath = QCoreApplication::applicationDirPath() + "/gdalwarp.exe";
+    if (!QFile::exists(gdalwarpPath))
         gdalwarpPath = "gdalwarp";
 
     process.setProgram(gdalwarpPath);

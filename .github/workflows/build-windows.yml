@@ -66,9 +66,16 @@ jobs:
               Get-ChildItem "$vcpkgDir\bin" -Filter "*.dll" | Copy-Item -Destination $pkg
           }
 
-          # GDAL tools (gdalwarp.exe)
-          if (Test-Path "$vcpkgDir\tools\gdal") {
-              Copy-Item "$vcpkgDir\tools\gdal\gdalwarp.exe" $pkg
+          # GDAL tools (gdalwarp.exe) - 兼容多个可能的路径
+          $gdalwarpPaths = @(
+              "$vcpkgDir\tools\gdal\gdalwarp.exe",
+              "$vcpkgDir\bin\gdalwarp.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($gdalwarpPaths) {
+              Copy-Item $gdalwarpPaths $pkg
+              Write-Host "gdalwarp.exe bundled from $gdalwarpPaths"
+          } else {
+              Write-Warning "gdalwarp.exe not found, downsampling will fail"
           }
 
           # GDAL data files
