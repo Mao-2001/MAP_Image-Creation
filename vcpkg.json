@@ -3,6 +3,9 @@
   "version": "1.3.0",
   "builtin-baseline": "940f58770cee8e2011bfb4847fb2bd70057301a8",
   "dependencies": [
-    "gdal"
+    {
+      "name": "gdal",
+      "features": ["tools"]
+    }
   ]
 }
