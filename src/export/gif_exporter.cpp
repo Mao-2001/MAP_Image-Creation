@@ -99,7 +99,7 @@ public:
         // 检查 ImageMagick 是否可用（优先程序目录，再查 PATH）
         QString appDir = QCoreApplication::applicationDirPath();
         auto findProgram = [&](const QString& name) -> QString {
-            QStringList candidates = {appDir + "/" + name, name};
+            QStringList candidates = {appDir + "/" + name + ".exe", appDir + "/" + name, name};
             for (const QString& exe : candidates) {
                 QProcess chk;
                 chk.setProgram(exe);

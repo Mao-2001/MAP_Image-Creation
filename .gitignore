@@ -8,3 +8,4 @@ build/
 *.prj
 .idea/
 CMakeUserPresets.json
+MAP_v1.3_Windows_*/

@@ -67,14 +67,14 @@ jobs:
           }
 
           # GDAL tools (gdalwarp.exe) - 递归搜索兼容多种 vcpkg 目录结构
-          $gdalwarpExe = @(
+          $gdalwarpPaths = @(
               "$vcpkgDir\tools\gdal\gdalwarp.exe",
               "$vcpkgDir\bin\gdalwarp.exe",
               (Get-ChildItem "$vcpkgDir" -Recurse -Filter "gdalwarp.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
           ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if ($gdalwarpExe) {
-              Copy-Item $gdalwarpExe $pkg
-              Write-Host "gdalwarp.exe bundled from $gdalwarpExe"
+          if ($gdalwarpPaths) {
+              Copy-Item $gdalwarpPaths $pkg
+              Write-Host "gdalwarp.exe bundled from $gdalwarpPaths"
           } else {
               Write-Warning "gdalwarp.exe not found, downsampling will fail"
           }
