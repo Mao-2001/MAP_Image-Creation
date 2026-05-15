@@ -102,6 +102,8 @@ jobs:
               if (Test-Path "$($imDir.FullName)/modules") {
                   Copy-Item "$($imDir.FullName)/modules" "$pkg/modules" -Recurse
               }
+              # 复制配置文件（delegates.xml 等），magick.exe 需要它们才能定位 coder 模块
+              Get-ChildItem "$($imDir.FullName)" -Filter "*.xml" | Copy-Item -Destination $pkg
               Write-Host "ImageMagick bundled from $($imDir.FullName)"
           } else {
               Write-Warning "ImageMagick not found, GIF export will fail"

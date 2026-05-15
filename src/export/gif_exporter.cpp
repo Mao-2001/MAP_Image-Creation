@@ -122,6 +122,10 @@ public:
 
         process.setProgram(program);
         process.setArguments(args);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert("MAGICK_CODER_MODULE_PATH", appDir + "/modules/coders/");
+        env.insert("MAGICK_CONFIGURE_PATH", appDir);
+        process.setProcessEnvironment(env);
         process.start();
         if (!process.waitForStarted(10000)) {
             lastError = "无法启动 " + program.toStdString() + ": " + process.errorString().toStdString();
