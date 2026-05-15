@@ -94,8 +94,10 @@ jobs:
           $imDir = Get-ChildItem "C:/Program Files/ImageMagick-*" | Select-Object -First 1
           if ($imDir) {
               Copy-Item "$($imDir.FullName)/magick.exe" $pkg
+              # 复制核心 DLL（CORE_RL_*），它们在安装根目录，不在 bin/ 下
+              Get-ChildItem "$($imDir.FullName)" -Filter "CORE_RL_*.dll" | Copy-Item -Destination $pkg
               if (Test-Path "$($imDir.FullName)/bin") {
-                  Copy-Item "$($imDir.FullName)/bin/*.dll" $pkg
+                  Get-ChildItem "$($imDir.FullName)/bin" -Filter "*.dll" | Copy-Item -Destination $pkg
               }
               if (Test-Path "$($imDir.FullName)/modules") {
                   Copy-Item "$($imDir.FullName)/modules" "$pkg/modules" -Recurse
